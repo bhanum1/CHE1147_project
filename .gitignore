@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Raw downloads and large intermediates
+archive/
+*.h5
+
+# Model outputs
+models/
+*.pkl
+*.joblib
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
