@@ -5,7 +5,9 @@ Cleaning, in order:
   2. drop rows with any NaN
   3. split: random, stratified on is_inhibitor (seed 0)
   4. drop features with zero variance in the train split
-
+  5. drop correlated features: |Pearson r| > 0.9 on the train split. Greedy in
+     column order (RDKit descriptors before Morgan bits), so a feature is dropped
+     if it correlates with one already kept.
 
 Reads <protein>_morgan_rdkit.csv (from featurize.py). Writes
 splits/<protein>/{train,val,test}.csv.
@@ -17,12 +19,28 @@ Usage (from the repo root):
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
 ROOT = Path(__file__).parent
 META = ["chembl_id", "smiles", "is_inhibitor"]
 SEED = 0
+CORR_THRESHOLD = 0.9
+
+
+def correlated(train, feats, threshold):
+    """Features to drop so no two kept features have |r| > threshold on train."""
+    # Interpretable descriptors first, so they win over hashed bits
+    order = [c for c in feats if not c.startswith("morgan_")] + [c for c in feats if c.startswith("morgan_")]
+    corr = np.abs(np.corrcoef(train[order].to_numpy(dtype=float), rowvar=False))
+    keep, drop = [], []
+    for i, c in enumerate(order):
+        if keep and corr[i, keep].max() > threshold:
+            drop.append(c)
+        else:
+            keep.append(i)
+    return drop
 
 
 def main(protein):
@@ -42,11 +60,15 @@ def main(protein):
 
     # Found on train only, so val/test don't influence which features are kept
     zero_var = [c for c in feats if train[c].nunique() <= 1]
-    train, val, test = (part.drop(columns=zero_var) for part in (train, val, test))
+    feats = [c for c in feats if c not in zero_var]
+
+    corr_drop = correlated(train, feats, CORR_THRESHOLD)
+    train, val, test = (part.drop(columns=zero_var + corr_drop) for part in (train, val, test))
 
     out = ROOT / "splits" / protein
     out.mkdir(parents=True, exist_ok=True)
-    print(f"dropped {len(nan_cols)} NaN columns, {nan_rows} NaN rows, {len(zero_var)} zero-variance (train) features"
+    print(f"dropped {len(nan_cols)} NaN columns, {nan_rows} NaN rows, {len(zero_var)} zero-variance (train) features, "
+          f"{len(corr_drop)} correlated (|r| > {CORR_THRESHOLD}, train) features"
           f" -> {len(df)} rows x {train.shape[1] - len(META)} features")
     for name, part in [("train", train), ("val", val), ("test", test)]:
         part.to_csv(out / f"{name}.csv", index=False)
