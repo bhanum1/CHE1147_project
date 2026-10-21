@@ -1,4 +1,4 @@
-"""Clean one protein's Morgan + RDKit features and split into train/val/test (80/10/10).
+"""Clean one protein's Morgan + RDKit features and split into train/test (80/20).
 
 Cleaning, in order:
   1. drop feature columns with any NaN
@@ -10,7 +10,7 @@ Cleaning, in order:
      if it correlates with one already kept.
 
 Reads <protein>_morgan_rdkit.csv (from featurize.py). Writes
-splits/<protein>/{train,val,test}.csv.
+splits/<protein>/{train,test}.csv.
 
 Usage (from the repo root):
     python split.py egfr_erbB1
@@ -55,22 +55,21 @@ def main(protein):
     df = df.dropna(subset=feats).reset_index(drop=True)
     nan_rows = n - len(df)
 
-    train, rest = train_test_split(df, test_size=0.2, stratify=df["is_inhibitor"], random_state=SEED)
-    val, test = train_test_split(rest, test_size=0.5, stratify=rest["is_inhibitor"], random_state=SEED)
+    train, test = train_test_split(df, test_size=0.2, stratify=df["is_inhibitor"], random_state=SEED)
 
     # Found on train only, so val/test don't influence which features are kept
     zero_var = [c for c in feats if train[c].nunique() <= 1]
     feats = [c for c in feats if c not in zero_var]
 
     corr_drop = correlated(train, feats, CORR_THRESHOLD)
-    train, val, test = (part.drop(columns=zero_var + corr_drop) for part in (train, val, test))
+    train, test = (part.drop(columns=zero_var + corr_drop) for part in (train, test))
 
     out = ROOT / "splits" / protein
     out.mkdir(parents=True, exist_ok=True)
     print(f"dropped {len(nan_cols)} NaN columns, {nan_rows} NaN rows, {len(zero_var)} zero-variance (train) features, "
           f"{len(corr_drop)} correlated (|r| > {CORR_THRESHOLD}, train) features"
           f" -> {len(df)} rows x {train.shape[1] - len(META)} features")
-    for name, part in [("train", train), ("val", val), ("test", test)]:
+    for name, part in [("train", train), ("test", test)]:
         part.to_csv(out / f"{name}.csv", index=False)
         print(f"{name}: {len(part)} rows, {100 * part['is_inhibitor'].mean():.1f}% inhibitors")
 

@@ -1,4 +1,4 @@
-"""Normalize one protein's train/val/test splits (run after split.py's correlation filter).
+"""Normalize one protein's train/test splits (run after split.py's correlation filter).
 
 All rules are decided on train and applied unchanged to val/test:
   1. Binary features (only 0 and 1 in train, e.g. Morgan bits) are left as is.
@@ -7,8 +7,8 @@ All rules are decided on train and applied unchanged to val/test:
      it brings the train kurtosis to 7 or below; otherwise leave the feature unlogged.
   3. Every continuous feature is z-scored with the train mean and std.
 
-Reads splits/<protein>/{train,val,test}.csv. Writes
-splits/<protein>/{train,val,test}_zscore.csv and zscore_params.csv (per-feature
+Reads splits/<protein>/{train,test}.csv. Writes
+splits/<protein>/{train,test}_zscore.csv and zscore_params.csv (per-feature
 treatment, kurtosis before/after log, train mean and std).
 
 Usage (from the repo root):
@@ -33,7 +33,7 @@ def signed_log1p(x):
 
 def main(protein):
     folder = ROOT / "splits" / protein
-    parts = {name: pd.read_csv(folder / f"{name}.csv") for name in ("train", "val", "test")}
+    parts = {name: pd.read_csv(folder / f"{name}.csv") for name in ("train", "test")}
     train = parts["train"]
     feats = [c for c in train.columns if c not in META]
     binary = [c for c in feats if set(train[c].unique()) <= {0, 1}]
