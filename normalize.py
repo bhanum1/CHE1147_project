@@ -1,6 +1,6 @@
 """Normalize one protein's train/test splits (run after split.py's correlation filter).
 
-All rules are decided on train and applied unchanged to val/test:
+All rules are decided on train and applied unchanged to test:
   1. Binary features (only 0 and 1 in train, e.g. Morgan bits) are left as is.
   2. For each continuous feature with train excess kurtosis > 7, try a log transform,
      sign(x) * log1p(|x|) (plain log1p for non-negative features). Keep it only if

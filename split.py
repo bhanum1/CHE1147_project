@@ -57,7 +57,7 @@ def main(protein):
 
     train, test = train_test_split(df, test_size=0.2, stratify=df["is_inhibitor"], random_state=SEED)
 
-    # Found on train only, so val/test don't influence which features are kept
+    # Found on train only, so test doesn't influence which features are kept
     zero_var = [c for c in feats if train[c].nunique() <= 1]
     feats = [c for c in feats if c not in zero_var]
 
