@@ -22,3 +22,10 @@ models/
 .DS_Store
 .vscode/
 .idea/
+
+# Generated pipeline artifacts
+.cache/
+.pytest_cache/
+data/external/
+training.log
+
