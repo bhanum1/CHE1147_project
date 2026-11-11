@@ -1,0 +1,78 @@
+"""Clean one protein's Morgan + RDKit features and split into train/test (80/20).
+
+Cleaning, in order:
+  1. drop feature columns with any NaN
+  2. drop rows with any NaN
+  3. split: random, stratified on is_inhibitor (seed 0)
+  4. drop features with zero variance in the train split
+  5. drop correlated features: |Pearson r| > 0.9 on the train split. Greedy in
+     column order (RDKit descriptors before Morgan bits), so a feature is dropped
+     if it correlates with one already kept.
+
+Reads <protein>_morgan_rdkit.csv (from featurize.py). Writes
+splits/<protein>/{train,test}.csv.
+
+Usage (from the repo root):
+    python split.py egfr_erbB1
+"""
+
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+ROOT = Path(__file__).parent
+META = ["chembl_id", "smiles", "is_inhibitor"]
+SEED = 0
+CORR_THRESHOLD = 0.9
+
+
+def correlated(train, feats, threshold):
+    """Features to drop so no two kept features have |r| > threshold on train."""
+    # Interpretable descriptors first, so they win over hashed bits
+    order = [c for c in feats if not c.startswith("morgan_")] + [c for c in feats if c.startswith("morgan_")]
+    corr = np.abs(np.corrcoef(train[order].to_numpy(dtype=float), rowvar=False))
+    keep, drop = [], []
+    for i, c in enumerate(order):
+        if keep and corr[i, keep].max() > threshold:
+            drop.append(c)
+        else:
+            keep.append(i)
+    return drop
+
+
+def main(protein):
+    df = pd.read_csv(ROOT / f"{protein}_morgan_rdkit.csv")
+    feats = [c for c in df.columns if c not in META]
+
+    nan_cols = [c for c in feats if df[c].isna().any()]
+    df = df.drop(columns=nan_cols)
+    feats = [c for c in feats if c not in nan_cols]
+
+    n = len(df)
+    df = df.dropna(subset=feats).reset_index(drop=True)
+    nan_rows = n - len(df)
+
+    train, test = train_test_split(df, test_size=0.2, stratify=df["is_inhibitor"], random_state=SEED)
+
+    # Found on train only, so test doesn't influence which features are kept
+    zero_var = [c for c in feats if train[c].nunique() <= 1]
+    feats = [c for c in feats if c not in zero_var]
+
+    corr_drop = correlated(train, feats, CORR_THRESHOLD)
+    train, test = (part.drop(columns=zero_var + corr_drop) for part in (train, test))
+
+    out = ROOT / "splits" / protein
+    out.mkdir(parents=True, exist_ok=True)
+    print(f"dropped {len(nan_cols)} NaN columns, {nan_rows} NaN rows, {len(zero_var)} zero-variance (train) features, "
+          f"{len(corr_drop)} correlated (|r| > {CORR_THRESHOLD}, train) features"
+          f" -> {len(df)} rows x {train.shape[1] - len(META)} features")
+    for name, part in [("train", train), ("test", test)]:
+        part.to_csv(out / f"{name}.csv", index=False)
+        print(f"{name}: {len(part)} rows, {100 * part['is_inhibitor'].mean():.1f}% inhibitors")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])
