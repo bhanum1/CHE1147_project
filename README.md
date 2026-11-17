@@ -10,18 +10,31 @@ The serialized selected pipeline is `models/20261111_141725_356816/random_forest
 
 ## Setup
 
-Use Python 3.14 and install the tested dependencies, then install this package:
+Requires Python 3.11 or newer. Create a virtual environment, install the dependencies, then install this package:
 
-```powershell
-python -m pip install -r requirements.txt
-python -m pip install -e . --no-build-isolation
+```bash
+python -m venv .venv
 ```
 
-Without installing the package, set `$env:PYTHONPATH = "$PWD/src"` in PowerShell before running the commands below.
+```bash
+source .venv/bin/activate   # Windows PowerShell: .venv\Scripts\Activate.ps1
+```
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+```bash
+python -m pip install -e .
+```
+
+`requirements.txt` gives minimum tested versions rather than exact pins; the exact versions behind a recorded experiment are in that run's `metadata.json`.
+
+Without installing the package, put `src` on the import path instead: `export PYTHONPATH="$PWD/src"` (Windows PowerShell: `$env:PYTHONPATH = "$PWD/src"`).
 
 ## Run
 
-```powershell
+```bash
 python -m egfr_pipeline.prepare
 python -m egfr_pipeline.prepare --rebuild-features
 python -m egfr_pipeline.eda egfr_erbB1
@@ -36,7 +49,13 @@ Prediction input requires a `smiles` column. Invalid structures are retained wit
 
 Preparation normally reuses the checked-in complete feature table. `--rebuild-features` streams the local ChEMBL dictionary and writes `features_rebuilt.csv` separately, checking molecule membership before saving; it does not replace the experiment input automatically. Optional `ydata-profiling` enables a fresh HTML report; core EDA runs without it.
 
-For predictable CPU usage on Windows, set `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`, and `MKL_NUM_THREADS` to `1` before launching the parallel search. The verified full run uses four search workers.
+For predictable CPU usage, set `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`, and `MKL_NUM_THREADS` to `1` before launching the parallel search, so the BLAS threads do not oversubscribe the cores already used by `--jobs`. The recorded full run uses four search workers.
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m egfr_pipeline.train --jobs 4
+```
+
+On Windows PowerShell, set the same three variables with `$env:OPENBLAS_NUM_THREADS = "1"` before running the command.
 
 ## Layout
 

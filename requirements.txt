@@ -1,8 +1,15 @@
-numpy==2.4.6
-pandas==2.3.3
-scikit-learn==1.9.0
-rdkit==2026.9.1
-matplotlib==3.11.0
-joblib==1.5.3
-seaborn==0.13.2
-pytest==9.0.3
+# Minimum tested versions, not exact pins. The exact versions used for a
+# recorded experiment are stored in reports/experiments/<run>/metadata.json.
+numpy>=2.3
+pandas>=2.2
+scikit-learn>=1.9
+rdkit>=2024.3
+matplotlib>=3.10
+joblib>=1.4
+seaborn>=0.13
+
+# Development
+pytest>=8.0
+
+# Optional: enables the extra ydata-profiling HTML report in the EDA step.
+# ydata-profiling>=4.12
