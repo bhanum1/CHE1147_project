@@ -10,9 +10,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import (roc_auc_score,average_precision_score,accuracy_score,precision_score,recall_score,f1_score,matthews_corrcoef,balanced_accuracy_score,make_scorer,RocCurveDisplay,PrecisionRecallDisplay,ConfusionMatrixDisplay)
+from sklearn.metrics import (roc_auc_score,average_precision_score,accuracy_score,precision_score,recall_score,f1_score,balanced_accuracy_score,make_scorer,RocCurveDisplay,PrecisionRecallDisplay,ConfusionMatrixDisplay)
 from .prepare import ROOT,DATA,META,main as prepare
-from .models import candidates
+from .models import candidates, preprocessing_for
 from .preprocessing import MolecularPreprocessor
 
 def main():
@@ -21,30 +21,32 @@ def main():
     parser.add_argument('--jobs',type=int,default=4)
     parser.add_argument('--quick',action='store_true')
     parser.add_argument('--config',type=Path)
+    parser.add_argument('--split',choices=['random','scaffold'],default='random',help='Evaluation split: the original random holdout, or the Bemis-Murcko scaffold holdout')
     args=parser.parse_args()
     if args.jobs < 1:
         parser.error('--jobs must be a positive integer')
     if args.models and set(args.models)-set(candidates()):
         parser.error('Unknown model names: '+', '.join(sorted(set(args.models)-set(candidates()))))
-    if not (DATA/'split_manifest.csv').exists(): prepare()
-    manifest=pd.read_csv(DATA/'split_manifest.csv')
+    manifest_path=DATA/('split_manifest.csv' if args.split=='random' else 'scaffold_manifest.csv')
+    if not manifest_path.exists(): prepare([] if args.split=='random' else ['--scaffold'])
+    manifest=pd.read_csv(manifest_path)
     data=pd.read_csv(DATA/'features.csv').set_index('chembl_id')
     tr=manifest[manifest.split=='train']; te=manifest[manifest.split=='test']
     train=data.loc[tr.chembl_id]; test=data.loc[te.chembl_id]
     X=train.drop(columns=['smiles','is_inhibitor']); y=train.is_inhibitor
     Xt=test[X.columns]; yt=test.is_inhibitor
     folds=[(np.flatnonzero(tr.fold.to_numpy()!=i),np.flatnonzero(tr.fold.to_numpy()==i)) for i in range(5)]
-    run=datetime.now().strftime('%Y%m%d_%H%M%S_%f')+('_quick' if args.quick else '')
+    run=datetime.now().strftime('%Y%m%d_%H%M%S_%f')+('_scaffold' if args.split=='scaffold' else '')+('_quick' if args.quick else '')
     out=ROOT/'reports/experiments'/run; out.mkdir(parents=True)
     modeldir=ROOT/'models'/run; modeldir.mkdir(parents=True)
     config=json.loads(args.config.read_text(encoding='utf-8-sig')) if args.config else {}
-    scoring={'roc_auc':'roc_auc','average_precision':'average_precision','accuracy':'accuracy','precision':make_scorer(precision_score,zero_division=0),'recall':'recall','f1':'f1','mcc':make_scorer(matthews_corrcoef),'balanced_accuracy':'balanced_accuracy'}
+    scoring={'roc_auc':'roc_auc','average_precision':'average_precision','accuracy':'accuracy','precision':make_scorer(precision_score,zero_division=0),'recall':'recall','f1':'f1','balanced_accuracy':'balanced_accuracy'}
     searches={}; rows=[]; messages=[]
     for name,(estimator,grid) in candidates().items():
         if args.models and name not in args.models: continue
         grid=config.get(name,grid)
         if args.quick: grid={k:[v[0]] for k,v in grid.items()}
-        pipe=Pipeline([('preprocess',MolecularPreprocessor(normalize=name!='random_forest')),('model',estimator)],memory=str(ROOT/'.cache/preprocessing'))
+        pipe=Pipeline([('preprocess',MolecularPreprocessor(**preprocessing_for(name))),('model',estimator)],memory=str(ROOT/'.cache/preprocessing'))
         search=GridSearchCV(pipe,{'model__'+k:v for k,v in grid.items()},scoring=scoring,refit='roc_auc',cv=folds,n_jobs=args.jobs,error_score='raise',verbose=1)
         start=time.monotonic()
         print(f'Training {name}...',flush=True)
@@ -65,16 +67,17 @@ def main():
         if values is not None: pd.DataFrame({'feature':pre.columns_,'value':values}).to_csv(out/f'{name}_importance.csv',index=False)
         print(f'{name}: CV AUC={row["cv_roc_auc"]:.4f}, elapsed={row["seconds"]:.1f}s',flush=True)
     if not rows: raise ValueError('No models selected')
-    cv=pd.DataFrame(rows).sort_values(['cv_roc_auc','cv_mcc','model'],ascending=[False,False,True]); cv.to_csv(out/'cv_summary.csv',index=False)
+    cv=pd.DataFrame(rows).sort_values(['cv_roc_auc','cv_f1','model'],ascending=[False,False,True]); cv.to_csv(out/'cv_summary.csv',index=False)
     winner=cv.iloc[0].model
     # Model selection is now frozen; test scores cannot change the selected model.
     final=[]
     figroc,axroc=plt.subplots(); figpr,axpr=plt.subplots()
     for name,search in searches.items():
-        model=search.best_estimator_; predicted=model.predict(Xt)
+        model=search.best_estimator_
         kind='decision_score' if hasattr(model,'decision_function') else 'probability'
         score=model.decision_function(Xt) if kind=='decision_score' else model.predict_proba(Xt)[:,1]
-        metric={'model':name,'roc_auc':roc_auc_score(yt,score),'average_precision':average_precision_score(yt,score),'accuracy':accuracy_score(yt,predicted),'precision':precision_score(yt,predicted,zero_division=0),'recall':recall_score(yt,predicted),'f1':f1_score(yt,predicted),'mcc':matthews_corrcoef(yt,predicted),'balanced_accuracy':balanced_accuracy_score(yt,predicted)}
+        predicted=model.predict(Xt)
+        metric={'model':name,'roc_auc':roc_auc_score(yt,score),'average_precision':average_precision_score(yt,score),'accuracy':accuracy_score(yt,predicted),'precision':precision_score(yt,predicted,zero_division=0),'recall':recall_score(yt,predicted),'f1':f1_score(yt,predicted),'balanced_accuracy':balanced_accuracy_score(yt,predicted)}
         final.append(metric)
         pd.DataFrame({'chembl_id':te.chembl_id.to_numpy(),'label':yt.to_numpy(),'prediction':predicted,'score':score,'score_type':kind}).to_csv(out/f'{name}_predictions.csv',index=False)
         RocCurveDisplay.from_predictions(yt,score,name=name,ax=axroc)
@@ -83,9 +86,11 @@ def main():
     figroc.savefig(out/'roc.png',bbox_inches='tight'); figpr.savefig(out/'precision_recall.png',bbox_inches='tight'); plt.close('all')
     final=pd.DataFrame(final); final.to_csv(out/'test_metrics.csv',index=False)
     fig,ax=plt.subplots(figsize=(9,5)); ax.bar(cv.model,cv.cv_roc_auc,yerr=cv.cv_roc_auc_std); ax.tick_params(axis='x',rotation=40); ax.set_ylabel('CV ROC-AUC'); fig.tight_layout(); fig.savefig(out/'cv_comparison.png'); plt.close(fig)
-    metadata={'selected_model':winner,'quick':args.quick,'seed':42,'python':platform.python_version(),'sklearn':sklearn.__version__,'numpy':np.__version__,'pandas':pd.__version__,'arguments':vars(args),'configuration':config,'feature_sha256':hashlib.sha256((DATA/'features.csv').read_bytes()).hexdigest(),'split_sha256':hashlib.sha256((DATA/'split_manifest.csv').read_bytes()).hexdigest()}
+    metadata={'selected_model':winner,'split':args.split,'n_train':len(tr),'n_test':len(te),'quick':args.quick,'seed':42,'python':platform.python_version(),'sklearn':sklearn.__version__,'numpy':np.__version__,'pandas':pd.__version__,'arguments':vars(args),'configuration':config,'feature_sha256':hashlib.sha256((DATA/'features.csv').read_bytes()).hexdigest(),'split_sha256':hashlib.sha256(manifest_path.read_bytes()).hexdigest()}
     (out/'metadata.json').write_text(json.dumps(metadata,indent=2,default=str))
     (out/'warnings.txt').write_text('\n'.join(messages),encoding='utf-8')
-    (out/'summary.md').write_text(f'# EGFR experiment\n\nSelected by training CV: **{winner}**.\n\nQuick validation: {args.quick}. Test set: 997 molecules.\n\n```\n{final.to_string(index=False)}\n```\n\nCV scores were used for tuning and are not unbiased generalization estimates. Test results did not influence model selection. Historical results used different preprocessing and evaluation sets. Coefficients and impurity importance do not establish causal effects or binding.\n',encoding='utf-8')
+    note={'random':'Random stratified holdout. Test molecules frequently share a scaffold, and often a near-identical structure, with training molecules, so these scores are an optimistic bound on performance for new chemistry.',
+          'scaffold':'Bemis-Murcko scaffold holdout. No test scaffold appears in training or in any tuning fold, so these scores estimate transfer to unseen chemistry and are expected to be lower than random-split scores.'}[args.split]
+    (out/'summary.md').write_text(f'# EGFR experiment\n\nSelected by training CV: **{winner}**.\n\nSplit: {args.split}. Quick validation: {args.quick}. Training set: {len(tr)} molecules. Test set: {len(te)} molecules.\n\n{note}\n\nModels and hyperparameters are selected by mean cross-validated ROC-AUC. Thresholded metrics use the default decision rule of each model; no operating point is tuned.\n\n```\n{final.to_string(index=False)}\n```\n\nCV scores were used for tuning and are not unbiased generalization estimates. Test results did not influence model selection. Historical results used different preprocessing and evaluation sets. Coefficients and impurity importance do not establish causal effects or binding.\n',encoding='utf-8')
     print(f'Completed: {out}',flush=True)
 if __name__=='__main__': main()

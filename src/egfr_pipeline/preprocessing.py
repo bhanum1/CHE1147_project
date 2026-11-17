@@ -4,9 +4,10 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 class MolecularPreprocessor(TransformerMixin, BaseEstimator):
-    def __init__(self, normalize=True, threshold=0.9):
+    def __init__(self, normalize=True, threshold=0.9, fingerprint_only=False):
         self.normalize=normalize
         self.threshold=threshold
+        self.fingerprint_only=fingerprint_only
 
     def fit(self,X,y=None):
         X=X.replace([np.inf,-np.inf],np.nan)
@@ -16,13 +17,21 @@ class MolecularPreprocessor(TransformerMixin, BaseEstimator):
         for c in cols:
             if X[c].nunique()<=1: self.dropped_[c]='constant'
         cols=[c for c in cols if c not in self.dropped_]
-        cols=[c for c in cols if not c.startswith('morgan_')]+[c for c in cols if c.startswith('morgan_')]
-        corr=np.abs(np.corrcoef(X[cols].to_numpy(dtype=float),rowvar=False))
-        keep=[]
-        for i,c in enumerate(cols):
-            if keep and np.max(corr[i,keep])>self.threshold: self.dropped_[c]='correlated'
-            else: keep.append(i)
-        self.columns_=[cols[i] for i in keep]
+        if self.fingerprint_only:
+            # Tanimoto read-across operates on the native fingerprint. Descriptors
+            # are excluded, and correlated bits are kept, because dropping bits
+            # changes the similarity the metric reports.
+            for c in cols:
+                if not c.startswith('morgan_'): self.dropped_[c]='descriptor'
+            self.columns_=[c for c in cols if c.startswith('morgan_')]
+        else:
+            cols=[c for c in cols if not c.startswith('morgan_')]+[c for c in cols if c.startswith('morgan_')]
+            corr=np.abs(np.corrcoef(X[cols].to_numpy(dtype=float),rowvar=False))
+            keep=[]
+            for i,c in enumerate(cols):
+                if keep and np.max(corr[i,keep])>self.threshold: self.dropped_[c]='correlated'
+                else: keep.append(i)
+            self.columns_=[cols[i] for i in keep]
         if not self.columns_: raise ValueError('No usable features remain')
         Z=X[self.columns_].copy()
         self.medians_=Z.median()
@@ -42,7 +51,9 @@ class MolecularPreprocessor(TransformerMixin, BaseEstimator):
         if self.normalize:
             Z[self.logged_]=np.sign(Z[self.logged_])*np.log1p(np.abs(Z[self.logged_]))
             Z[self.continuous_]=(Z[self.continuous_]-self.means_)/self.scales_
-        return Z.to_numpy(dtype=float)
+        # Boolean output for the fingerprint-only path, so the Jaccard metric
+        # receives bits rather than floats it would convert itself.
+        return Z.to_numpy(dtype=bool if self.fingerprint_only else float)
 
     def get_feature_names_out(self,input_features=None):
         return np.array(self.columns_,dtype=object)

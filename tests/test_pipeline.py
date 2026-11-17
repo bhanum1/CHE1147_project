@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from sklearn.pipeline import Pipeline
-from egfr_pipeline.models import candidates
+from egfr_pipeline.models import candidates, preprocessing_for
 from egfr_pipeline.preprocessing import MolecularPreprocessor
 
 def test_fold_isolation_and_missing():
@@ -37,14 +37,56 @@ def test_fixed_manifest():
     assert len(manifest[manifest.split=='test']) == 997
     assert set(manifest.loc[manifest.split=='train','fold']) == set(range(5))
 
+@pytest.mark.parametrize('module',['prepare','preprocessing','models','train','predict','eda'])
+def test_every_module_imports(module):
+    """Catches syntax errors in entrypoints no other test imports."""
+    __import__(f'egfr_pipeline.{module}')
+
+def test_fingerprint_only_keeps_native_bits():
+    frame = pd.DataFrame({'desc_0':[1.,2.,3.,4.], 'morgan_0':[0,1,0,1],
+                          'morgan_1':[0,1,0,1], 'morgan_2':[1,1,0,0]})
+    pre = MolecularPreprocessor(normalize=False, fingerprint_only=True).fit(frame)
+    assert pre.columns_ == ['morgan_0','morgan_1','morgan_2']
+    assert pre.dropped_['desc_0'] == 'descriptor'
+    assert 'correlated' not in pre.dropped_.values(), 'duplicate bits must survive for Tanimoto'
+    assert set(np.unique(pre.transform(frame))) == {0,1}
+
+def test_scaffold_grouping():
+    from egfr_pipeline.prepare import scaffolds_of
+    cores = scaffolds_of(['c1ccccc1CCN','c1ccccc1CCCO','c1ccncc1C','CCCCO',None])
+    assert cores[0] == cores[1], 'same ring system, different side chains'
+    assert cores[0] != cores[2], 'benzene and pyridine are different scaffolds'
+    assert cores[3].startswith('acyclic:') and cores[4].startswith('acyclic:')
+    assert cores[3] != cores[4], 'acyclic molecules do not share one group'
+
+def test_scaffold_split_isolates_scaffolds():
+    from egfr_pipeline.prepare import scaffold_manifest
+    rings = ['c1ccccc1','c1ccncc1','c1ccc2ccccc2c1','c1cnc2ccccc2c1',
+             'c1ccsc1','c1ccoc1','C1CCCCC1','C1CCNCC1']
+    data = pd.DataFrame([{'chembl_id':f'M{i}_{k}', 'smiles':ring+'C'*(k+1), 'is_inhibitor':(i+k)%2}
+                         for i,ring in enumerate(rings) for k in range(6)])
+    manifest = scaffold_manifest(data, test_fraction=0.25, folds=2)
+    train = manifest[manifest.split=='train']
+    test = manifest[manifest.split=='test']
+    assert manifest.scaffold.nunique() == len(rings)
+    assert len(test) > 0
+    assert not set(train.scaffold) & set(test.scaffold), 'scaffold leaked across the holdout'
+    for fold in range(2):
+        inside = set(train.loc[train.fold==fold,'scaffold'])
+        assert not inside & set(train.loc[train.fold!=fold,'scaffold']), 'scaffold leaked across folds'
+    assert set(train.fold) == {0,1} and set(test.fold) == {-1}
+    pd.testing.assert_frame_equal(manifest, scaffold_manifest(data, test_fraction=0.25, folds=2),
+                                  obj='scaffold split is not reproducible')
+
 @pytest.mark.parametrize('name',list(candidates()))
 def test_all_models_round_trip(name,tmp_path):
     rng=np.random.default_rng(42)
-    X=pd.DataFrame(rng.normal(size=(60,8)),columns=[f'desc_{i}' for i in range(8)])
+    X=pd.concat([pd.DataFrame(rng.normal(size=(60,8)),columns=[f'desc_{i}' for i in range(8)]),
+                 pd.DataFrame(rng.integers(0,2,size=(60,12)),columns=[f'morgan_{i}' for i in range(12)])],axis=1)
     y=(X.desc_0+X.desc_1>0).astype(int)
     estimator,grid=candidates()[name]
     estimator.set_params(**{key:values[0] for key,values in grid.items()})
-    model=Pipeline([('preprocess',MolecularPreprocessor(normalize=name!='random_forest')),
+    model=Pipeline([('preprocess',MolecularPreprocessor(**preprocessing_for(name))),
                     ('model',estimator)]).fit(X,y)
     target=tmp_path/'model.joblib'
     joblib.dump(model,target)
