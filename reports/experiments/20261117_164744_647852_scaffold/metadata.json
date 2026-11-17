@@ -1,0 +1,22 @@
+{
+  "selected_model": "random_forest",
+  "split": "scaffold",
+  "n_train": 3986,
+  "n_test": 996,
+  "quick": false,
+  "seed": 42,
+  "python": "3.11.9",
+  "sklearn": "1.9.1",
+  "numpy": "2.3.5",
+  "pandas": "2.3.3",
+  "arguments": {
+    "models": null,
+    "jobs": 4,
+    "quick": false,
+    "config": null,
+    "split": "scaffold"
+  },
+  "configuration": {},
+  "feature_sha256": "cd4afd8b314ae386a414744393a201c46cbf1fbb0f3a29834e13af33e1ec69b2",
+  "split_sha256": "131229b6f35882837e5d80b3eb6e5cde3a4b0250596704c535b43f9b2411bcd8"
+}
