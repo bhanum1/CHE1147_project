@@ -22,8 +22,9 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve
 
-RUN = Path('reports/experiments/20261117_164744_647852_scaffold')
-OUT = Path('report/figures')
+ROOT = Path(__file__).resolve().parents[1]
+RUN = ROOT / 'reports/experiments/20261117_164744_647852_scaffold'
+OUT = ROOT / 'report/figures'
 
 # Text and furniture.
 INK = '#333333'

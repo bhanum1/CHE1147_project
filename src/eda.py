@@ -9,11 +9,11 @@ Reads the unfiltered processed feature table. Writes plots, summary.json and
 an optional ydata-profiling report to reports/eda/<protein>/.
 
 Usage (from the repo root):
-    python -m egfr_pipeline.eda egfr_erbB1
+    python -m src.eda egfr_erbB1
 """
 
+import argparse
 import json
-import sys
 from pathlib import Path
 
 import matplotlib
@@ -28,7 +28,7 @@ from sklearn.metrics import roc_auc_score
 
 RDLogger.DisableLog("rdApp.*")
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 # Tutorial's key descriptors -> RDKit column names in the feature file
 KEY = {"MW": "MolWt", "LogP": "MolLogP", "TPSA": "TPSA", "HBD": "NumHDonors",
        "HBA": "NumHAcceptors", "RotBonds": "NumRotatableBonds"}
@@ -211,4 +211,6 @@ def main(protein):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("protein", help="Dataset directory name under data/processed")
+    main(parser.parse_args().protein)

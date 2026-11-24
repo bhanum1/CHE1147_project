@@ -10,7 +10,7 @@ ROC-AUC is the primary metric and the basis for selection. Thresholded metrics u
 
 | | CV ROC-AUC | test ROC-AUC | avg precision | F1 | precision | recall | balanced acc |
 |---|---|---|---|---|---|---|---|
-| [random split](reports/experiments/20261117_163819_859414/summary.md) | | | | | | | |
+| random split | | | | | | | |
 | random_forest | 0.9271 | 0.9335 | 0.9698 | 0.9014 | 0.877 | 0.928 | 0.8172 |
 | knn (Tanimoto) | 0.9089 | 0.9246 | 0.9600 | 0.8988 | 0.867 | 0.933 | 0.8054 |
 | logistic (C=0.3, ridge) | 0.9077 | 0.9188 | 0.9635 | 0.8930 | 0.868 | 0.919 | 0.8031 |
@@ -21,7 +21,11 @@ ROC-AUC is the primary metric and the basis for selection. Thresholded metrics u
 | logistic (C=0.1, ridge) | 0.8537 | 0.8523 | 0.9238 | 0.8525 | 0.815 | 0.894 | 0.7293 |
 | baseline | 0.5000 | 0.5000 | 0.6817 | 0.8107 | 0.682 | 1.000 | 0.5000 |
 
-Read the scaffold numbers as the estimate of transfer to new chemistry and the random-split numbers as an optimistic same-series bound.
+Read the scaffold numbers as the estimate of transfer to new chemistry and the random-split numbers as an optimistic same-series bound. To view the original random-split summary from the repository root, run:
+
+```bash
+git show 332819d:reports/experiments/20261117_163819_859414/summary.md
+```
 
 Random forest beats both baselines, and the comparison has to be paired to see it: fold difficulty varies enough that marginal error bars overlap while within-fold differences do not. The forest wins all five folds against both knn and logistic on both splits, by mean per-fold margins of 0.026 to 0.030 on the scaffold split. A paired bootstrap over the scaffold test molecules puts the advantage at +0.0158 ROC-AUC against knn (95% CI +0.0007 to +0.0308) and +0.0221 against logistic (95% CI +0.0045 to +0.0399). Two caveats: cross-validation folds share training data, so paired t-tests across them are anti-conservative, and the margin over knn is narrow enough that it would not survive a correction for multiple comparisons. The margin over the majority-class baseline, +0.3744, is not in doubt.
 
@@ -29,7 +33,7 @@ On the random split the same comparison against knn is not significant (95% CI -
 
 Hyperparameter headroom is spent: all 18 random forest configurations land within one fold standard deviation of the best on the scaffold split, spanning 0.0115 ROC-AUC in total.
 
-The serialized selected pipelines are under `models/<run>/` (generated locally and ignored by Git). Sixteen automated tests pass.
+The serialized selected pipelines are under `models/<run>/` (generated locally and ignored by Git).
 
 ## Setup
 
@@ -53,21 +57,20 @@ python -m pip install -e .
 
 `requirements.txt` gives minimum tested versions rather than exact pins; the exact versions behind a recorded experiment are in that run's `metadata.json`.
 
-Without installing the package, put `src` on the import path instead: `export PYTHONPATH="$PWD/src"` (Windows PowerShell: `$env:PYTHONPATH = "$PWD/src"`).
-
 ## Run
 
+Run these commands from the repository root.
+
 ```bash
-python -m egfr_pipeline.prepare
-python -m egfr_pipeline.prepare --scaffold
-python -m egfr_pipeline.prepare --rebuild-features
-python -m egfr_pipeline.eda egfr_erbB1
-python -m pytest -q
-python -m egfr_pipeline.train --jobs 4
-python -m egfr_pipeline.train --split scaffold --jobs 4
-python -m egfr_pipeline.train --quick --jobs 1
-python -m egfr_pipeline.train --models logistic random_forest --jobs 4
-python -m egfr_pipeline.predict --model models/RUN/random_forest.joblib --input molecules.csv --output predictions.csv
+python -m src.prepare
+python -m src.prepare --scaffold
+python -m src.prepare --rebuild-features
+python -m src.eda egfr_erbB1
+python -m src.train --jobs 4
+python -m src.train --split scaffold --jobs 4
+python -m src.train --quick --jobs 1
+python -m src.train --models logistic random_forest --jobs 4
+python -m src.predict --model models/RUN/random_forest.joblib --input molecules.csv --output predictions.csv
 ```
 
 Prediction input requires a `smiles` column. Invalid structures are retained with an error status. `--quick` reduces the parameter grid while retaining the five fixed folds; its results are validation artifacts, not final experiment results. `--config configs/search.json` can supply model-specific parameter grids.
@@ -77,19 +80,17 @@ Prediction input requires a `smiles` column. Invalid structures are retained wit
 For predictable CPU usage, set `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`, and `MKL_NUM_THREADS` to `1` before launching the parallel search, so the BLAS threads do not oversubscribe the cores already used by `--jobs`. The recorded full run uses four search workers.
 
 ```bash
-OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m egfr_pipeline.train --jobs 4
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 python -m src.train --jobs 4
 ```
 
 On Windows PowerShell, set the same three variables with `$env:OPENBLAS_NUM_THREADS = "1"` before running the command.
 
 ## Layout
 
-- `docs/`: proposal, data provenance and methodology.
 - `data/raw/egfr_erbB1.csv`: cleaned source labels.
 - `data/external/`: local ChEMBL structure dictionary, needed only by `--rebuild-features` and too large to check in.
 - `data/processed/egfr_erbB1/`: 2265 unfiltered molecular features, the fixed random split membership and the scaffold split membership.
-- `src/egfr_pipeline/`: preprocessing, candidate models, preparation, training and prediction.
-- `tests/`: regression checks for fold isolation, scaffold isolation and estimator persistence.
+- `src/`: preprocessing, candidate models, preparation, exploratory analysis, training and prediction.
 - `reports/eda/`: exploratory analysis; this describes the complete dataset and is not a model-selection input.
 - `reports/experiments/`: timestamped CV and final test results, figures and metadata.
 - `report/`: the figures used in the final report, and the scripts that build them.

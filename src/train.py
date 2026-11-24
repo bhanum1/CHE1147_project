@@ -18,8 +18,8 @@ Everything a run produces lands in one timestamped directory under
 inputs, so a result can be traced back to exactly what produced it.
 
 Usage (from the repo root):
-    python -m egfr_pipeline.train --jobs 4
-    python -m egfr_pipeline.train --split scaffold --jobs 4
+    python -m src.train --jobs 4
+    python -m src.train --split scaffold --jobs 4
 """
 import argparse, json, hashlib, platform, time, warnings
 from datetime import datetime

@@ -20,5 +20,5 @@ dependencies = [
 dev = ["pytest>=8.0"]
 profiling = ["ydata-profiling>=4.12"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["src"]

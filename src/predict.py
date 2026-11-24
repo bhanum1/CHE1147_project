@@ -9,7 +9,7 @@ Molecules RDKit cannot parse are kept as rows with a status rather than dropped,
 so the output lines up with the input row for row.
 
 Usage (from the repo root):
-    python -m egfr_pipeline.predict \
+    python -m src.predict \
         --model models/RUN/random_forest.joblib \
         --input molecules.csv --output predictions.csv
 """

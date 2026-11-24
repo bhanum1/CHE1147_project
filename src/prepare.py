@@ -14,9 +14,9 @@ is scored on exactly the same partitions, so the comparison between them is
 paired.
 
 Usage (from the repo root):
-    python -m egfr_pipeline.prepare              # verify the random split
-    python -m egfr_pipeline.prepare --scaffold   # also write the scaffold split
-    python -m egfr_pipeline.prepare --rebuild-features
+    python -m src.prepare              # verify the random split
+    python -m src.prepare --scaffold   # also write the scaffold split
+    python -m src.prepare --rebuild-features
 """
 from pathlib import Path
 import argparse
@@ -27,7 +27,7 @@ from rdkit.Chem import Descriptors, rdFingerprintGenerator
 from rdkit.Chem.Scaffolds import MurckoScaffold
 from sklearn.model_selection import StratifiedGroupKFold, StratifiedKFold
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / 'data/processed/egfr_erbB1'
 
 FOLDS = 5
