@@ -1,4 +1,4 @@
-﻿# EGFR inhibitor classification
+# EGFR inhibitor classification
 
 This CHE1147 project compares molecular classifiers for EGFR inhibition. Other kinase label tables are retained as source material, but the current experiments use EGFR only.
 
@@ -29,7 +29,7 @@ On the random split the same comparison against knn is not significant (95% CI -
 
 Hyperparameter headroom is spent: all 18 random forest configurations land within one fold standard deviation of the best on the scaffold split, spanning 0.0115 ROC-AUC in total.
 
-The serialized selected pipelines are under `models/<run>/` (generated locally and ignored by Git). Sixteen automated tests pass; migrated files retain their original content hashes.
+The serialized selected pipelines are under `models/<run>/` (generated locally and ignored by Git). Sixteen automated tests pass.
 
 ## Setup
 
@@ -66,13 +66,13 @@ python -m pytest -q
 python -m egfr_pipeline.train --jobs 4
 python -m egfr_pipeline.train --split scaffold --jobs 4
 python -m egfr_pipeline.train --quick --jobs 1
-python -m egfr_pipeline.train --models logistic_l1 logistic_l2 --jobs 4
-python -m egfr_pipeline.predict --model models/RUN/logistic_l2.joblib --input molecules.csv --output predictions.csv
+python -m egfr_pipeline.train --models logistic random_forest --jobs 4
+python -m egfr_pipeline.predict --model models/RUN/random_forest.joblib --input molecules.csv --output predictions.csv
 ```
 
 Prediction input requires a `smiles` column. Invalid structures are retained with an error status. `--quick` reduces the parameter grid while retaining the five fixed folds; its results are validation artifacts, not final experiment results. `--config configs/search.json` can supply model-specific parameter grids.
 
-Preparation normally reuses the checked-in complete feature table. `--rebuild-features` streams the local ChEMBL dictionary and writes `features_rebuilt.csv` separately, checking molecule membership before saving; it does not replace the experiment input automatically. Optional `ydata-profiling` enables a fresh HTML report; core EDA runs without it.
+`prepare` with no arguments verifies the random split against the feature table and rewrites its five folds; the 3985/997 membership itself is historical and is kept in `split_manifest.csv`, which cannot be regenerated. `--scaffold` generates the scaffold split from scratch. Preparation normally reuses the checked-in complete feature table. `--rebuild-features` streams the local ChEMBL dictionary and writes `features_rebuilt.csv` separately, checking molecule membership before saving; it does not replace the experiment input automatically. Optional `ydata-profiling` enables a fresh HTML report; core EDA runs without it.
 
 For predictable CPU usage, set `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`, and `MKL_NUM_THREADS` to `1` before launching the parallel search, so the BLAS threads do not oversubscribe the cores already used by `--jobs`. The recorded full run uses four search workers.
 
@@ -84,16 +84,16 @@ On Windows PowerShell, set the same three variables with `$env:OPENBLAS_NUM_THRE
 
 ## Layout
 
-- `docs/`: proposal, data provenance, methodology and a SHA-256 migration manifest.
-- `data/raw/`: cleaned source labels for eight kinases.
-- `data/external/`: local ChEMBL structure dictionary.
-- `data/interim/`: EGFR structures and initial descriptors.
+- `docs/`: proposal, data provenance and methodology.
+- `data/raw/egfr_erbB1.csv`: cleaned source labels.
+- `data/external/`: local ChEMBL structure dictionary, needed only by `--rebuild-features` and too large to check in.
 - `data/processed/egfr_erbB1/`: 2265 unfiltered molecular features, the fixed random split membership and the scaffold split membership.
 - `src/egfr_pipeline/`: preprocessing, candidate models, preparation, training and prediction.
-- `reports/eda/`: original exploratory analysis; this describes the complete dataset and is not a model-selection input.
+- `tests/`: regression checks for fold isolation, scaffold isolation and estimator persistence.
+- `reports/eda/`: exploratory analysis; this describes the complete dataset and is not a model-selection input.
 - `reports/experiments/`: timestamped CV and final test results, figures and metadata.
-- `models/`: serialized complete pipelines, generated locally.
-- `legacy/`: historical scripts and outputs, retained for traceability and not used as training features.
+- `report/`: the figures used in the final report, and the scripts that build them.
+- `models/`: serialized complete pipelines, generated locally and ignored by Git.
 
 ## Evaluation
 
@@ -109,6 +109,4 @@ Models and hyperparameters are selected by mean CV ROC-AUC. All fitted candidate
 
 Metrics include ROC-AUC, average precision, accuracy, precision, recall, F1 and balanced accuracy. ROC-AUC is primary; it is what selection uses and what the comparisons between models rest on. The thresholded metrics describe the default operating point only. F1 in particular ignores true negatives and rewards predicting the majority class, so the all-positive baseline already scores above 0.81 here; read it against that floor rather than against zero, and alongside precision and recall. Coefficients and impurity feature importance describe model associations, not causal chemistry or molecular binding.
 
-Historical scores came from a 797-molecule internal holdout with preprocessing outside CV and must not be compared directly with the corrected evaluation. The partial CDK2 feature artifact has only 180 molecules and no target column.
-
-Original scripts in `legacy/` retain their historical path assumptions and are reference-only. Use the package entrypoints for current work.
+Historical scores from the earlier coursework came from a 797-molecule internal holdout with preprocessing fitted outside CV, and must not be compared directly with the evaluation above.
