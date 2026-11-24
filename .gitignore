@@ -29,3 +29,8 @@ models/
 data/external/
 training.log
 
+# Derived poster figure rasters
+report/poster/.figure_cache/
+
+# Office lock files
+~$*
